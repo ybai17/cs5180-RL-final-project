@@ -54,7 +54,7 @@ def run_random_episodes(n_episodes: int = 3, render: bool = False):
         f"{np.mean(all_rewards):.1f} ± {np.std(all_rewards):.1f}"
     )
     print("=" * 60)
-    print("Phase 1 sanity check PASSED — environment is working.")
+    print("Initial check test PASSED — environment is working.")
  
  
 if __name__ == "__main__":

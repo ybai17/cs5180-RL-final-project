@@ -109,7 +109,7 @@ class FrameStackWrapper(gym.Wrapper):
         return self._frames.copy(), reward, terminated, truncated, info
 
 # create the environment for the agent to play the game in, with wrappers applied
-def create_airstriker_env(game="Airstriker-Genesis", state=retro.State.DEFAULT, frame_stack=4, resize=84, clip_rewards=True,render_mode: str | None = None,
+def create_airstriker_env(game="Airstriker-Genesis-v0", state=retro.State.DEFAULT, frame_stack=4, resize=84, clip_rewards=True,render_mode: str | None = None,
 ):
     """
     Create and wrap a stable-retro environment.
@@ -140,5 +140,5 @@ def create_airstriker_env(game="Airstriker-Genesis", state=retro.State.DEFAULT, 
     env = ResizeWrapper(env, size=resize)
     if clip_rewards:
         env = ClipReward(env)
-    env = FrameStackWrapper(env, k=frame_stack)
+    env = FrameStackWrapper(env, num_frames=frame_stack)
     return env
