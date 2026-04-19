@@ -1,12 +1,12 @@
 import argparse
 import time
 import numpy as np
-from env_wrappers import make_env
+from env_wrappers import create_airstriker_env
  
 # function for running N episodes
 def run_random_episodes(n_episodes: int = 3, render: bool = False):
     render_mode = "human" if render else None
-    env = make_env(render_mode=render_mode)
+    env = create_airstriker_env(render_mode=render_mode)
  
     print("=" * 60)
     print("ENVIRONMENT DIAGNOSTICS")
