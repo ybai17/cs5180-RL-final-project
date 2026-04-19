@@ -1,5 +1,6 @@
-import stable_retro as retro
+# This file is for testing 
 
+import stable_retro as retro
 
 def main():
     env = retro.make(game="Airstriker-Genesis-v0")
@@ -11,7 +12,6 @@ def main():
         if terminated or truncated:
             env.reset()
     env.close()
-
 
 if __name__ == "__main__":
     main()
