@@ -4,6 +4,7 @@ import numpy as np
 from env_wrappers import create_airstriker_env
  
 # function for running N episodes
+# Use "python test_env.py --render" when running if you want to watch
 def run_random_episodes(n_episodes: int = 3, render: bool = False):
     render_mode = "human" if render else None
     env = create_airstriker_env(render_mode=render_mode)
