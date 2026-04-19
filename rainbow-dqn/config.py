@@ -27,15 +27,15 @@ training_config = {
 epsilon_config = {
     "eps_start": 1.0,           # starting value of epsilon, which will decay over time
     "eps_end": 0.01,            # value of epsilon to eventually end at, after decaying
-    "eps_decay_steps": 100_000, # number of steps for epsilon to decay over
+    "eps_decay_steps": 100000, # number of steps for epsilon to decay over
 }
 
-# contains parameters for 
+# contains parameters for controlling how logs are printed
 log_config = {
-    "log_freq": 1_000,            # steps between TensorBoard writes
-    "eval_freq": 50_000,          # steps between evaluation runs
+    "log_freq": 1000,   # steps between TensorBoard writes
+    "eval_freq": 5e4,   # steps between evaluation runs
     "eval_episodes": 5,
-    "save_freq": 100_000,         # steps between checkpoint saves
+    "save_freq": 1e5,   # steps between checkpoint saves
 }
 
 # contains flags dictating whether or not we are using certain additional rainbow DQN features
