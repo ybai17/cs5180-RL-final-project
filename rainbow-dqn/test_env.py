@@ -10,7 +10,7 @@ def run_random_episodes(n_episodes: int = 3, render: bool = False):
     env = create_airstriker_env(render_mode=render_mode)
  
     print("=" * 60)
-    print("ENVIRONMENT DIAGNOSTICS")
+    print("ENVIRONMENT INFO")
     print("=" * 60)
     print(f"  Game:              Airstriker-Genesis-v0")
     print(f"  Observation space: {env.observation_space}")
@@ -39,7 +39,7 @@ def run_random_episodes(n_episodes: int = 3, render: bool = False):
             done = terminated or truncated
  
             if render:
-                time.sleep(0.01)  # slow down so you can watch
+                time.sleep(0.01)  # slow down we you can watch
  
         all_rewards.append(ep_reward)
         print(
@@ -52,7 +52,7 @@ def run_random_episodes(n_episodes: int = 3, render: bool = False):
     print("-" * 60)
     print(
         f"  Mean reward over {n_episodes} episodes: "
-        f"{np.mean(all_rewards):.1f} ± {np.std(all_rewards):.1f}"
+        f"{np.mean(all_rewards):.1f} +/- {np.std(all_rewards):.1f}"
     )
     print("=" * 60)
     print("Initial check test PASSED — environment is working.")
