@@ -33,7 +33,7 @@ CONFIG = {
     "save_freq": 1e5,   # steps between checkpoint saves
 
     # contains flags dictating whether or not we are using certain additional rainbow DQN features
-    "double_dqn": False,     # a boolean to set whether or not we are using 2 DQN's. True = use double DQN, False = don't (for early testing)
+    "double_dqn": True,      # a boolean to set whether or not we are using 2 DQN's. True = use double DQN, False = don't (for early testing)
     "per": False,            # a boolean to set whether or not we are using the prioritized experience replay. True = use PER, False = don't
     "dueling": False,        # a boolean to set whether or not we are using dueling networks.
     "distributional": False, # a boolean to set whether or not we are using distributional future rewards
