@@ -24,7 +24,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 
 from config import CONFIG
-from env_wrappers import make_env
+from env_wrappers import create_airstriker_env
 from replay_buffer import ReplayBuffer
 from agent import DQNAgent
 
@@ -37,7 +37,7 @@ def evaluate(agent: DQNAgent, n_episodes: int, step: int) -> float:
     -------
     mean_reward : float
     """
-    env = make_env(game=CONFIG["game"], clip_rewards=False)  # raw rewards for eval
+    env = create_airstriker_env(game=CONFIG["game"], clip_rewards=False)  # raw rewards for eval
     rewards = []
     for _ in range(n_episodes):
         obs, _ = env.reset()
@@ -58,7 +58,7 @@ def train(device_str: str = "cpu"):
     device = torch.device(device_str)
     print(f"Device: {device}")
 
-    env = make_env(game=CONFIG["game"])
+    env = create_airstriker_env(game=CONFIG["game"])
     obs_shape = env.observation_space.shape    # (4, 84, 84)
     n_actions = env.action_space.n
 
@@ -155,7 +155,7 @@ def train(device_str: str = "cpu"):
             writer.add_scalar("eval/mean_reward", mean_eval, step)
             print(f"  [EVAL] Step {step}  |  Mean reward: {mean_eval:.1f}")
             # Reopen training env and start a fresh episode
-            env = make_env(game=CONFIG["game"])
+            env = create_airstriker_env(game=CONFIG["game"])
             obs, _ = env.reset()
             ep_reward = 0.0
             ep_steps = 0
@@ -181,3 +181,17 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     train(device_str=args.device)
+
+
+# Watch the final trained agent
+# python play.py --checkpoint runs/<run_name>/checkpoints/ckpt_final.pt
+
+# Compare an early checkpoint vs a late one
+# python play.py --checkpoint runs/<run_name>/checkpoints/ckpt_100000.pt
+# python play.py --checkpoint runs/<run_name>/checkpoints/ckpt_final.pt
+
+# Slow it down to really study the behavior
+# python play.py --checkpoint runs/<run_name>/checkpoints/ckpt_final.pt --delay 0.03
+
+# Watch more episodes
+# python play.py --checkpoint runs/<run_name>/checkpoints/ckpt_final.pt --episodes 10

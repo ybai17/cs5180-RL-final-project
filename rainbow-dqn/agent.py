@@ -109,7 +109,7 @@ class DQNAgent:
 
         # --- Target computation ---
         with torch.no_grad():
-            if self.config.get("rainbow_other_parts_config").get("double_dqn", False):
+            if self.config.get("double_dqn", False):
                 # Double DQN: online net selects, target net evaluates
                 next_actions = self.online_net(next_obs).argmax(dim=1, keepdim=True)
                 next_q = self.target_net(next_obs).gather(1, next_actions).squeeze(1)

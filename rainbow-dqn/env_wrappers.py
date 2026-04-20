@@ -134,6 +134,7 @@ def create_airstriker_env(game="Airstriker-Genesis-v0", state=retro.State.DEFAUL
     render_mode : str or None
         Pass "human" to open a window, None for headless.
     """
+    env = retro.make(game=game, state=state, render_mode=render_mode)
     env = AirStrikerActionWrapper(env)
     env = GrayscaleWrapper(env)
     env = ResizeWrapper(env, size=resize)
