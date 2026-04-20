@@ -182,6 +182,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
     train(device_str=args.device)
 
+# python train.py                # CPU
+# python train.py --device cuda  # GPU
+# tensorboard --logdir runs/     # monitor in browser using local tensorboard server
 
 # Watch the final trained agent
 # python play.py --checkpoint runs/<run_name>/checkpoints/ckpt_final.pt
