@@ -13,7 +13,7 @@ import numpy as np
 import torch
 
 from config import CONFIG
-from env_wrappers import make_env
+from env_wrappers import create_airstriker_env
 from agent import DQNAgent
 
 
@@ -21,7 +21,7 @@ def play(checkpoint: str, n_episodes: int = 3, delay: float = 0.01):
     device = torch.device("cpu")  # no need for GPU during playback
 
     # --- Create env with rendering enabled and raw rewards ---
-    env = make_env(
+    env = create_airstriker_env(
         game=CONFIG["game"],
         clip_rewards=False,
         render_mode="human",
