@@ -9,9 +9,10 @@ Output: (batch, n_actions)             Q-values per action
 import torch
 import torch.nn as nn
 
-# This class defines the DQN that will be used for Q-value estimations. Uses CNNs
 class QNetwork(nn.Module):
     """
+    This class defines the DQN that will be used for Q-value estimations. Uses CNNs
+
     Conv2d(frame_stack, 32, 8, stride=4) -> ReLU
     Conv2d(32, 64, 4, stride=2)          -> ReLU
     Conv2d(64, 64, 3, stride=1)          -> ReLU
@@ -47,6 +48,8 @@ class QNetwork(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
+        Fowards the input through the network 
+        
         Parameters
         ----------
         x : (batch, in_channels, 84, 84) float32, expected in [0, 1].

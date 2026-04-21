@@ -25,7 +25,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 from config import CONFIG
 from env_wrappers import create_airstriker_env
-from replay_buffer import ReplayBuffer
+from replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 from agent import DQNAgent
 
 
@@ -33,12 +33,13 @@ def evaluate(agent: DQNAgent, n_episodes: int, step: int) -> float:
     """
     Run evaluation episodes with a low fixed epsilon.
 
-    Returns
+    Returns:
     -------
     mean_reward : float
     """
     env = create_airstriker_env(game=CONFIG["game"], clip_rewards=False)  # raw rewards for eval
     rewards = []
+
     for _ in range(n_episodes):
         obs, _ = env.reset()
         ep_reward = 0.0
@@ -50,11 +51,14 @@ def evaluate(agent: DQNAgent, n_episodes: int, step: int) -> float:
             done = terminated or truncated
         rewards.append(ep_reward)
     env.close()
+
     return float(np.mean(rewards))
 
 
 def train(device_str: str = "cpu"):
-    # ----- Setup -----
+    """
+    Function for training the agent. Use CPU by default, unless we specify "cuda" in run arguments
+    """
     device = torch.device(device_str)
     print(f"Device: {device}")
 
@@ -71,7 +75,16 @@ def train(device_str: str = "cpu"):
 
     buffer = ReplayBuffer(capacity=CONFIG["buffer_size"], obs_shape=obs_shape)
 
-    # ----- Logging -----
+    use_per = CONFIG.get("per", False)
+    if use_per:
+        buffer = PrioritizedReplayBuffer(
+            capacity=CONFIG["buffer_size"],
+            obs_shape=obs_shape,
+            alpha=CONFIG["per_alpha"],
+        )
+        print("Using Prioritized Experience Replay")
+
+    # logging stuff
     run_name = f"dqn_{CONFIG['game']}_{int(time.time())}"
     log_dir = os.path.join("runs", run_name)
     writer = SummaryWriter(log_dir)
@@ -79,11 +92,11 @@ def train(device_str: str = "cpu"):
     os.makedirs(ckpt_dir, exist_ok=True)
     print(f"Logging to {log_dir}")
 
-    # ----- Seed -----
+    # use a pre-determined seed set in the CONFIG
     np.random.seed(CONFIG["seed"])
     torch.manual_seed(CONFIG["seed"])
 
-    # ----- Training state -----
+    # training state parameters/vars
     obs, _ = env.reset()
     ep_reward = 0.0
     ep_steps = 0
@@ -94,19 +107,19 @@ def train(device_str: str = "cpu"):
     start_time = time.time()
 
     for step in range(1, total_steps + 1):
-        # --- 1. Select and execute action ---
+        # select action to take
         action = agent.select_action(obs, step)
         next_obs, reward, terminated, truncated, info = env.step(action)
         done = terminated or truncated
 
-        # --- 2. Store transition ---
+        # save transition to replay buffer
         buffer.push(obs, action, reward, next_obs, done)
 
         obs = next_obs
         ep_reward += reward
         ep_steps += 1
 
-        # --- 3. Handle episode end ---
+        # handle when episode ends
         if done:
             ep_count += 1
             writer.add_scalar("train/episode_reward", ep_reward, step)
@@ -130,43 +143,55 @@ def train(device_str: str = "cpu"):
             ep_reward = 0.0
             ep_steps = 0
 
-        # --- 4. Train ---
+        # this part contains the code for training
         if step >= CONFIG["train_start"] and step % CONFIG["train_freq"] == 0:
-            batch = buffer.sample(CONFIG["batch_size"], device)
-            loss = agent.update(batch)
+            if use_per:
+                # Anneal beta linearly from beta_start to beta_end
+                beta_frac = min(1.0, step / CONFIG["per_beta_anneal_steps"])
+                beta = CONFIG["per_beta_start"] + beta_frac * (CONFIG["per_beta_end"] - CONFIG["per_beta_start"])
+                batch = buffer.sample(CONFIG["batch_size"], device, beta=beta)
+            else:
+                batch = buffer.sample(CONFIG["batch_size"], device)
+
+            loss, td_errors = agent.update(batch)
             losses.append(loss)
 
-        # --- 5. Sync target network ---
+            # update priorities in the sum tree
+            if use_per:
+                buffer.update_priorities(batch["indices"], td_errors, epsilon=CONFIG["per_epsilon"])
+
+        # sync online network to target network
         if step % CONFIG["target_update_freq"] == 0:
             agent.sync_target()
 
-        # --- 6. Log training metrics ---
+        # log the training data based on 
         if step % CONFIG["log_freq"] == 0 and losses:
             mean_loss = np.mean(losses)
             writer.add_scalar("train/loss", mean_loss, step)
             losses.clear()
 
-        # --- 7. Evaluate ---
-        # stable-retro only allows one emulator per process, so we must
-        # close the training env before evaluate() creates its own.
+        # evaluate training so far
+        # stable-retro only allows one emulator per process, so we have to
+        # close the training env before evaluate() creates a new one
         if step % CONFIG["eval_freq"] == 0:
             env.close()
             mean_eval = evaluate(agent, CONFIG["eval_episodes"], step)
             writer.add_scalar("eval/mean_reward", mean_eval, step)
             print(f"  [EVAL] Step {step}  |  Mean reward: {mean_eval:.1f}")
-            # Reopen training env and start a fresh episode
+
+            # reopen training env and start a fresh episode
             env = create_airstriker_env(game=CONFIG["game"])
             obs, _ = env.reset()
             ep_reward = 0.0
             ep_steps = 0
 
-        # --- 8. Save checkpoint ---
+        # this saves the checkpoint
         if step % CONFIG["save_freq"] == 0:
             path = os.path.join(ckpt_dir, f"ckpt_{step}.pt")
             agent.save(path)
             print(f"  [SAVE] {path}")
 
-    # ----- Cleanup -----
+    # cleanup
     agent.save(os.path.join(ckpt_dir, "ckpt_final.pt"))
     env.close()
     writer.close()
@@ -182,19 +207,20 @@ if __name__ == "__main__":
     args = parser.parse_args()
     train(device_str=args.device)
 
+# to train:
 # python train.py                # CPU
 # python train.py --device cuda  # GPU
 # tensorboard --logdir runs/     # monitor in browser using local tensorboard server
 
-# Watch the final trained agent
+# watch the final trained agent
 # python play.py --checkpoint runs/<run_name>/checkpoints/ckpt_final.pt
 
-# Compare an early checkpoint vs a late one
+# compare an earlier checkpoint vs a late one (or the last one)
 # python play.py --checkpoint runs/<run_name>/checkpoints/ckpt_100000.pt
 # python play.py --checkpoint runs/<run_name>/checkpoints/ckpt_final.pt
 
-# Slow it down to really study the behavior
+# You can also slow it down to make it easier to watch 
 # python play.py --checkpoint runs/<run_name>/checkpoints/ckpt_final.pt --delay 0.03
 
-# Watch more episodes
+# watch more episodes
 # python play.py --checkpoint runs/<run_name>/checkpoints/ckpt_final.pt --episodes 10

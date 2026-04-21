@@ -32,6 +32,13 @@ CONFIG = {
     "eval_episodes": 5,
     "save_freq": 1e5,   # steps between checkpoint saves
 
+    # contains parameters for controlling the prioritized experience replay (PER)
+    "per_alpha": 0.6,
+    "per_beta_start": 0.4,
+    "per_beta_end": 1.0,
+    "per_beta_anneal_steps": 1_000_000,
+    "per_epsilon": 1e-6,                # small constant added to priorities
+
     # contains flags dictating whether or not we are using certain additional rainbow DQN features
     "double_dqn": True,      # a boolean to set whether or not we are using 2 DQN's. True = use double DQN, False = don't (for early testing)
     "per": False,            # a boolean to set whether or not we are using the prioritized experience replay. True = use PER, False = don't

@@ -1,25 +1,32 @@
+"""
+File containing function for performing a basic test of the environment using a random agent.
+"""
+
 import argparse
 import time
 import numpy as np
 from env_wrappers import create_airstriker_env
  
-# function for running N episodes
-# Use "python test.py --render" when running if you want to watch
 def run_random_episodes(n_episodes: int = 3, render: bool = False):
+    """
+    function for running N episodes
+    Use "python test.py --render" when running if you want to watch
+    """
     render_mode = "human" if render else None
     env = create_airstriker_env(render_mode=render_mode)
  
     print("=" * 60)
     print("ENVIRONMENT INFO")
     print("=" * 60)
-    print(f"  Game:              Airstriker-Genesis-v0")
-    print(f"  Observation space: {env.observation_space}")
-    print(f"  Obs dtype:         {env.observation_space.dtype}")
-    print(f"  Action space:      {env.action_space}  (n={env.action_space.n})")
+    print(f"Game: Airstriker-Genesis-v0")
+    print(f"Observation space: {env.observation_space}")
+    print(f"Obs dtype: {env.observation_space.dtype}")
+    print(f"Action space: {env.action_space}  (n={env.action_space.n})")
     print("=" * 60)
  
     all_rewards = []
- 
+    
+    # main loop
     for ep in range(1, n_episodes + 1):
         obs, info = env.reset()
         assert obs.shape == env.observation_space.shape, (

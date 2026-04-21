@@ -1,16 +1,10 @@
 """
-DQN Agent.
+DQN Agent that uses the trained DQN to pick actions
 
-Owns the online network, target network, optimizer, and provides:
+Uses the online network, target network, optimizer, and provides:
   - epsilon-greedy action selection
   - TD loss computation
   - target network synchronization
-
-Later phases modify:
-  - Phase 3: Double DQN target computation  (self.compute_loss)
-  - Phase 5: Dueling architecture            (model.py)
-  - Phase 7: Distributional loss             (self.compute_loss)
-  - Phase 8: Noisy nets / remove epsilon     (self.select_action)
 """
 
 import numpy as np
@@ -20,7 +14,6 @@ import torch.optim as optim
 
 from model import QNetwork
 
-
 class DQNAgent:
     def __init__(self, n_actions: int, in_channels: int, config: dict, device: torch.device):
         self.n_actions = n_actions
@@ -28,26 +21,23 @@ class DQNAgent:
         self.device = device
         self.gamma = config["gamma"]
 
-        # --- Networks ---
+        # the Q networks used for decision-making
         self.online_net = QNetwork(in_channels, n_actions).to(device)
         self.target_net = QNetwork(in_channels, n_actions).to(device)
         self.sync_target()                       # copy weights
-        self.target_net.eval()                    # target never trains
+        self.target_net.eval()                   # target never trains
 
-        # --- Optimizer ---
+        # use standard Adam optimizer
         self.optimizer = optim.Adam(
             self.online_net.parameters(),
             lr=config["learning_rate"],
         )
 
-        # --- Epsilon schedule (linear decay) ---
+        # epsilon will decay linearly based on pre-defined parameters we set in CONFIG
         self.eps_start = config["eps_start"]
         self.eps_end = config["eps_end"]
         self.eps_decay_steps = config["eps_decay_steps"]
 
-    # ------------------------------------------------------------------
-    # Action selection
-    # ------------------------------------------------------------------
     def select_action(self, obs: np.ndarray, step: int, eval_mode: bool = False) -> int:
         """
         Epsilon-greedy action selection.
@@ -75,6 +65,7 @@ class DQNAgent:
                 .div_(255.0)
             )
             q_values = self.online_net(obs_t)      # (1, n_actions)
+
             return q_values.argmax(dim=1).item()
 
     def _epsilon(self, step: int) -> float:
@@ -82,20 +73,20 @@ class DQNAgent:
         fraction = min(1.0, step / self.eps_decay_steps)
         return self.eps_start + fraction * (self.eps_end - self.eps_start)
 
-    # ------------------------------------------------------------------
-    # Learning
-    # ------------------------------------------------------------------
-    def compute_loss(self, batch: dict) -> torch.Tensor:
+    # the actual training
+    def compute_loss(self, batch: dict):
         """
-        Compute the standard DQN (or Double DQN) TD loss.
+        Compute the DQN / Double DQN TD loss, with optional PER weighting
 
-        Parameters
+        Parameters:
         ----------
-        batch : dict from ReplayBuffer.sample()
+        batch : dict from ReplayBuffer.sample() or PrioritizedReplayBuffer.sample()
 
-        Returns
+        Returns:
         -------
-        loss : scalar tensor (mean Huber loss over the batch)
+        loss      : scalar tensor (weighted mean Huber loss)
+        td_errors : np.ndarray (batch,) — absolute TD errors for priority updates.
+                    Only meaningful when PER is enabled; returned regardless.
         """
         obs      = batch["obs"]        # (B, C, H, W)
         actions  = batch["actions"]    # (B,)
@@ -104,13 +95,13 @@ class DQNAgent:
         dones    = batch["dones"]      # (B,)
 
         # Q(s, a) for the actions that were taken
-        q_values = self.online_net(obs)                          # (B, A)
+        q_values = self.online_net(obs)                             # (B, A)
         q_sa = q_values.gather(1, actions.unsqueeze(1)).squeeze(1)  # (B,)
 
         # --- Target computation ---
         with torch.no_grad():
             if self.config.get("double_dqn", False):
-                # Double DQN: online net selects, target net evaluates
+                # double DQN: online net selects, target net evaluates
                 next_actions = self.online_net(next_obs).argmax(dim=1, keepdim=True)
                 next_q = self.target_net(next_obs).gather(1, next_actions).squeeze(1)
             else:
@@ -119,37 +110,44 @@ class DQNAgent:
 
             target = rewards + self.gamma * next_q * (1.0 - dones)
 
-        # Huber loss (smooth L1) — less sensitive to outliers than MSE
-        loss = nn.functional.smooth_l1_loss(q_sa, target)
-        return loss
+        # element-wise Huber loss (unreduced), like what's used in most rainbow DQN implementations
+        elementwise_loss = nn.functional.smooth_l1_loss(q_sa, target, reduction="none")  # (B,)
 
-    def update(self, batch: dict) -> float:
+        # absolute TD errors for PER priority updates
+        td_errors = torch.abs(q_sa - target).detach().cpu().numpy()
+
+        # if PER is active, apply importance-sampling weights 
+        if "weights" in batch:
+            loss = (elementwise_loss * batch["weights"]).mean()
+        else:
+            loss = elementwise_loss.mean()
+
+        return loss, td_errors
+
+    def update(self, batch: dict):
         """
-        Run one gradient step.
+        Run one gradient step
 
-        Returns
+        Returns:
         -------
-        loss_value : float (for logging)
+        loss_value : float      (for logging)
+        td_errors  : np.ndarray (batch,)  (for PER priority updates)
         """
-        loss = self.compute_loss(batch)
+        loss, td_errors = self.compute_loss(batch)
         self.optimizer.zero_grad()
         loss.backward()
-        # Gradient clipping — stabilizes early training
+
+        # gradient clipping — stabilizes early training
         nn.utils.clip_grad_norm_(self.online_net.parameters(), max_norm=10.0)
         self.optimizer.step()
-        return loss.item()
+        return loss.item(), td_errors
 
-    # ------------------------------------------------------------------
-    # Target network
-    # ------------------------------------------------------------------
     def sync_target(self):
-        """Hard-copy online network weights to target network."""
+        """Helper function to copy the online network's weights to the target"""
         self.target_net.load_state_dict(self.online_net.state_dict())
 
-    # ------------------------------------------------------------------
-    # Checkpointing
-    # ------------------------------------------------------------------
     def save(self, path: str):
+        """Save the checkpoint to the specified filepath"""
         torch.save({
             "online_net": self.online_net.state_dict(),
             "target_net": self.target_net.state_dict(),
@@ -157,6 +155,7 @@ class DQNAgent:
         }, path)
 
     def load(self, path: str):
+        """Load a checkpoint from the specificed filepath"""
         ckpt = torch.load(path, map_location=self.device)
         self.online_net.load_state_dict(ckpt["online_net"])
         self.target_net.load_state_dict(ckpt["target_net"])
