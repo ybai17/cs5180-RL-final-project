@@ -167,7 +167,7 @@ class PrioritizedReplayBuffer:
 
         # divide the total priority range into equal segments, then
         # sample one transition from each segment (stratified sampling)
-        total = self.tree.total
+        total = self.tree.total()
         segment = total / batch_size
 
         for i in range(batch_size):

@@ -26,12 +26,13 @@ from torch.utils.tensorboard import SummaryWriter
 from config import CONFIG
 from env_wrappers import create_airstriker_env
 from replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
+from n_step import NStepBuffer
 from agent import DQNAgent
 
 
-def evaluate(agent: DQNAgent, n_episodes: int, step: int) -> float:
+def evaluate(agent: DQNAgent, num_episodes: int, step: int) -> float:
     """
-    Run evaluation episodes with a low fixed epsilon.
+    Run evaluation episodes with a low fixed epsilon
 
     Returns:
     -------
@@ -39,8 +40,7 @@ def evaluate(agent: DQNAgent, n_episodes: int, step: int) -> float:
     """
     env = create_airstriker_env(game=CONFIG["game"], clip_rewards=False)  # raw rewards for eval
     rewards = []
-
-    for _ in range(n_episodes):
+    for _ in range(num_episodes):
         obs, _ = env.reset()
         ep_reward = 0.0
         done = False
@@ -51,14 +51,12 @@ def evaluate(agent: DQNAgent, n_episodes: int, step: int) -> float:
             done = terminated or truncated
         rewards.append(ep_reward)
     env.close()
-
     return float(np.mean(rewards))
 
 
 def train(device_str: str = "cpu"):
-    """
-    Function for training the agent. Use CPU by default, unless we specify "cuda" in run arguments
-    """
+
+    # setup stuff
     device = torch.device(device_str)
     print(f"Device: {device}")
 
@@ -84,7 +82,14 @@ def train(device_str: str = "cpu"):
         )
         print("Using Prioritized Experience Replay")
 
-    # logging stuff
+    # the n-step return buffer
+    n_step = CONFIG.get("n_step", 1)
+    n_step_buf = None
+    if n_step > 1:
+        n_step_buf = NStepBuffer(n=n_step, gamma=CONFIG["gamma"], buffer=buffer)
+        print(f"Using {n_step}-step returns")
+
+    # fo9r logging
     run_name = f"dqn_{CONFIG['game']}_{int(time.time())}"
     log_dir = os.path.join("runs", run_name)
     writer = SummaryWriter(log_dir)
@@ -92,11 +97,11 @@ def train(device_str: str = "cpu"):
     os.makedirs(ckpt_dir, exist_ok=True)
     print(f"Logging to {log_dir}")
 
-    # use a pre-determined seed set in the CONFIG
+    # the seed
     np.random.seed(CONFIG["seed"])
     torch.manual_seed(CONFIG["seed"])
 
-    # training state parameters/vars
+    # keep track of the data during training
     obs, _ = env.reset()
     ep_reward = 0.0
     ep_steps = 0
@@ -107,19 +112,22 @@ def train(device_str: str = "cpu"):
     start_time = time.time()
 
     for step in range(1, total_steps + 1):
-        # select action to take
+        # select and execute the action
         action = agent.select_action(obs, step)
         next_obs, reward, terminated, truncated, info = env.step(action)
         done = terminated or truncated
 
-        # save transition to replay buffer
-        buffer.push(obs, action, reward, next_obs, done)
+        # store the transition
+        if n_step_buf is not None:
+            n_step_buf.push(obs, action, reward, next_obs, done)
+        else:
+            buffer.push(obs, action, reward, next_obs, done)
 
         obs = next_obs
         ep_reward += reward
         ep_steps += 1
 
-        # handle when episode ends
+        # handle when the episode ends
         if done:
             ep_count += 1
             writer.add_scalar("train/episode_reward", ep_reward, step)
@@ -131,22 +139,22 @@ def train(device_str: str = "cpu"):
                 elapsed = time.time() - start_time
                 fps = step / elapsed
                 print(
-                    f"Step {step:>8d}/{total_steps}  |  "
-                    f"Ep {ep_count:>5d}  |  "
-                    f"Reward: {ep_reward:>7.1f}  |  "
-                    f"Eps: {agent._epsilon(step):.3f}  |  "
-                    f"Buf: {len(buffer):>7d}  |  "
-                    f"FPS: {fps:.0f}"
+                    f"Step {step}/{total_steps} | "
+                    f"Ep {ep_count} | "
+                    f"Reward: {ep_reward} | "
+                    f"Eps: {agent._epsilon(step)} | "
+                    f"Buf: {len(buffer)} | "
+                    f"FPS: {fps}"
                 )
 
             obs, _ = env.reset()
             ep_reward = 0.0
             ep_steps = 0
 
-        # this part contains the code for training
+        # train
         if step >= CONFIG["train_start"] and step % CONFIG["train_freq"] == 0:
             if use_per:
-                # Anneal beta linearly from beta_start to beta_end
+                # anneal the beta linearly from beta_start to beta_end
                 beta_frac = min(1.0, step / CONFIG["per_beta_anneal_steps"])
                 beta = CONFIG["per_beta_start"] + beta_frac * (CONFIG["per_beta_end"] - CONFIG["per_beta_start"])
                 batch = buffer.sample(CONFIG["batch_size"], device, beta=beta)
@@ -160,32 +168,31 @@ def train(device_str: str = "cpu"):
             if use_per:
                 buffer.update_priorities(batch["indices"], td_errors, epsilon=CONFIG["per_epsilon"])
 
-        # sync online network to target network
+        # sync to the target netwrork
         if step % CONFIG["target_update_freq"] == 0:
             agent.sync_target()
 
-        # log the training data based on 
+        # log the training metrics
         if step % CONFIG["log_freq"] == 0 and losses:
             mean_loss = np.mean(losses)
             writer.add_scalar("train/loss", mean_loss, step)
             losses.clear()
 
-        # evaluate training so far
-        # stable-retro only allows one emulator per process, so we have to
-        # close the training env before evaluate() creates a new one
+        # evaluate
+        # stable-retro only allows one emulator per process, so we must
+        # close the training env before evaluate() creates its own.
         if step % CONFIG["eval_freq"] == 0:
             env.close()
             mean_eval = evaluate(agent, CONFIG["eval_episodes"], step)
             writer.add_scalar("eval/mean_reward", mean_eval, step)
             print(f"  [EVAL] Step {step}  |  Mean reward: {mean_eval:.1f}")
-
-            # reopen training env and start a fresh episode
+            # Reopen training env and start a fresh episode
             env = create_airstriker_env(game=CONFIG["game"])
             obs, _ = env.reset()
             ep_reward = 0.0
             ep_steps = 0
 
-        # this saves the checkpoint
+        # save the checkpoint
         if step % CONFIG["save_freq"] == 0:
             path = os.path.join(ckpt_dir, f"ckpt_{step}.pt")
             agent.save(path)

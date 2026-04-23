@@ -1,8 +1,13 @@
 """
 DQN architecture defined in this file
 
-Input:  (batch, frame_stack, 84, 84)  float32 in [0, 1]
-Output: (batch, n_actions)             Q-values per action
+Non-distributional mode:
+    Input:  (batch, frame_stack, 84, 84)  float32 in [0, 1]
+    Output: (batch, n_actions)             Q-values
+
+Distributional mode:
+    Input:  (batch, frame_stack, 84, 84)  float32 in [0, 1]
+    Output: (batch, n_actions, n_atoms)    probability distributions over returns
 
 """
 
@@ -19,10 +24,11 @@ class QNetwork(nn.Module):
     Flatten -> Linear(3136, 512) -> ReLU -> Linear(512, n_actions)
     """
 
-    def __init__(self, in_channels: int, n_actions: int):
+    def __init__(self, in_channels: int, num_actions: int, dueling: bool = False):
         super().__init__()
         self.in_channels = in_channels
-        self.n_actions = n_actions
+        self.n_actions = num_actions
+        self.dueling = dueling
 
         # CNN feature extraction
         self.features = nn.Sequential(
@@ -39,25 +45,48 @@ class QNetwork(nn.Module):
         # 64 * 7 * 7 = 3136
         self.feature_size = 64 * 7 * 7
 
-        # fully connected head
-        self.head = nn.Sequential(
-            nn.Linear(self.feature_size, 512),
-            nn.ReLU(),
-            nn.Linear(512, n_actions),
-        )
+        # check if dueling. If so, split the heads
+        if dueling:
+            self.value_stream = nn.Sequential(
+                nn.Linear(self.feature_size, 512),
+                nn.ReLU(),
+                nn.Linear(512, 1),
+            )
+            
+            self.advantage_stream = nn.Sequential(
+                nn.Linear(self.feature_size, 512),
+                nn.ReLU(),
+                nn.Linear(512, num_actions)
+            )
+
+        else:
+            # fully connected head
+            self.head = nn.Sequential(
+                nn.Linear(self.feature_size, 512),
+                nn.ReLU(),
+                nn.Linear(512, num_actions),
+            )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Fowards the input through the network 
         
-        Parameters
+        Parameters:
         ----------
         x : (batch, in_channels, 84, 84) float32, expected in [0, 1].
 
-        Returns
+        Returns:
         -------
         q_values : (batch, n_actions)
         """
         x = self.features(x)
         x = x.view(x.size(0), -1)  # flatten
+
+        if self.dueling:
+            value = self.value_stream(x)
+            advantage = self.advantage_stream(x)
+
+            q = value + advantage - advantage.mean(dim=1, keepdim=True)
+            return q
+
         return self.head(x)

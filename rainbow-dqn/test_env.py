@@ -6,6 +6,8 @@ import argparse
 import time
 import numpy as np
 from env_wrappers import create_airstriker_env
+
+debug_flag = False
  
 def run_random_episodes(n_episodes: int = 3, render: bool = False):
     """
@@ -49,10 +51,11 @@ def run_random_episodes(n_episodes: int = 3, render: bool = False):
                 time.sleep(0.01)  # slow down we you can watch
  
         all_rewards.append(ep_reward)
-        print(
-            f"  Episode {ep:>3d}  |  steps: {steps:>5d}  |  "
-            f"reward: {ep_reward:>8.1f}  |  final obs range: [{obs.min()}, {obs.max()}]"
-        )
+        if debug_flag:
+            print(
+                f"  Episode {ep:>3d}  |  steps: {steps:>5d}  |  "
+                f"reward: {ep_reward:>8.1f}  |  final obs range: [{obs.min()}, {obs.max()}]"
+            )
  
     env.close()
  

@@ -20,8 +20,9 @@ CONFIG = {
     "train_start": 1e5,         # fill buffer before training begins
     "train_freq": 4,            # env steps between gradient updates
     "target_update_freq": 8000, # steps between target-net syncs
+    "n_step": 3,
 
-    # contains parameters for epsilon value for epsilon-greedy policy in early learning/testing. CONFLICTS WITH NOISY NETS
+    # contains parameters for epsilon value for epsilon-greedy policy in early learning/testing.
     "eps_start": 1.0,           # starting value of epsilon, which will decay over time
     "eps_end": 0.01,            # value of epsilon to eventually end at, after decaying
     "eps_decay_steps": 100000, # number of steps for epsilon to decay over
@@ -41,8 +42,8 @@ CONFIG = {
 
     # contains flags dictating whether or not we are using certain additional rainbow DQN features
     "double_dqn": True,      # a boolean to set whether or not we are using 2 DQN's. True = use double DQN, False = don't (for early testing)
-    "per": False,            # a boolean to set whether or not we are using the prioritized experience replay. True = use PER, False = don't
-    "dueling": False,        # a boolean to set whether or not we are using dueling networks.
+    "per": True,            # a boolean to set whether or not we are using the prioritized experience replay. True = use PER, False = don't
+    "dueling": True,        # a boolean to set whether or not we are using dueling networks.
     "distributional": False, # a boolean to set whether or not we are using distributional future rewards
     "noisy_nets": False,     # a boolean to set whether or not we are using noisy nets for exploration. CONFLICTS WITH EPSILON-GREEDY
 }
